@@ -1,8 +1,7 @@
 # frozen_string_literal: true
 
 require "active_support/core_ext/numeric/bytes"
-require "azure/storage"
-require "azure/storage/core/auth/shared_access_signature"
+require "azure/storage/common"
 
 module ActiveStorage
   # Wraps the Microsoft Azure Storage Blob Service as an Active Storage service.
@@ -11,16 +10,17 @@ module ActiveStorage
     attr_reader :client, :blobs, :container, :signer
 
     def initialize(storage_account_name:, storage_access_key:, container:, **options)
-      @client = Azure::Storage::Client.create(storage_account_name: storage_account_name, storage_access_key: storage_access_key, **options)
-      @signer = Azure::Storage::Core::Auth::SharedAccessSignature.new(storage_account_name, storage_access_key)
-      @blobs = client.blob_client
+      @client = Azure::Storage::Common::Client.create(storage_account_name: storage_account_name, storage_access_key: storage_access_key, **options)
+      @signer = Azure::Storage::Common::Core::Auth::SharedAccessSignature.new(storage_account_name, storage_access_key)
+      @blobs = Azure::Storage::Blob::BlobService.new(client: @client)
       @container = container
     end
 
     def upload(key, io, checksum: nil, **)
       instrument :upload, key: key, checksum: checksum do
         begin
-          blobs.create_block_blob(container, key, IO.try_convert(io) || io, content_md5: checksum)
+          converted_io = IO.try_convert(io) || io
+          blobs.create_block_blob(container, key, converted_io, content_md5: checksum)
         rescue Azure::Core::Http::HTTPError
           raise ActiveStorage::IntegrityError
         end
